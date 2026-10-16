@@ -1,0 +1,28 @@
+name: Join the CSR challenge
+description: Create your group's private repository
+title: "Join"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **One member opens this issue for the whole group** (at most 3 members, you included).
+        A private repository is created for the group, and every member receives an invitation to it.
+
+  - type: textarea
+    id: teammates
+    attributes:
+      label: Teammates
+      description: GitHub usernames of the other members, one per line. Leave empty if you work alone.
+      placeholder: |
+        username1
+        username2
+    validations:
+      required: false
+
+  - type: input
+    id: code
+    attributes:
+      label: Course code
+      description: The code given in class.
+    validations:
+      required: true

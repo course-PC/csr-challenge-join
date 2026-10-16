@@ -1,0 +1,33 @@
+# Join flow: a "Join" issue creates the group's repository from the template
+name: join
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+jobs:
+  join:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create group repository
+        run: python3 .github/scripts/join.py
+        env:
+          ADMIN_TOKEN: ${{ secrets.JOIN_TOKEN }}
+          ISSUE_TOKEN: ${{ github.token }}
+          ORG: ${{ github.repository_owner }}
+          JOIN_REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          TEMPLATE: csr-challenge
+          TOPIC: csr-group
+          MAX_MEMBERS: "3"
+          MAX_GROUPS: ${{ vars.MAX_GROUPS }}
+          JOIN_DEADLINE: ${{ vars.JOIN_DEADLINE }}
+          JOIN_CODE: ${{ secrets.JOIN_CODE }}
