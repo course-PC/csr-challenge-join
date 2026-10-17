@@ -8,8 +8,9 @@ Join flow: "Join" issue -> private group repository created from the template.
   4. create ORG/csr-<opener> from the template, tag it, record the members in its description
   5. invite every member as collaborator (push), reply on the issue, close and lock it
 
-All input from the issue is untrusted: it arrives through environment variables,
-usernames are validated by regex, and gh is called without a shell.
+All input from the issue is untrusted: the body is fetched through the API (never through
+the workflow environment, which public logs print), usernames are validated by regex,
+and gh is called without a shell.
 """
 
 import json
@@ -29,7 +30,6 @@ ORG = ENV["ORG"]
 JOIN_REPO = ENV["JOIN_REPO"]
 ISSUE = ENV["ISSUE_NUMBER"]
 AUTHOR = ENV["ISSUE_AUTHOR"]
-BODY = ENV.get("ISSUE_BODY", "")
 TEMPLATE = ENV.get("TEMPLATE", "csr-challenge")
 TOPIC = ENV.get("TOPIC", "csr-group")
 MAX_MEMBERS = int(ENV.get("MAX_MEMBERS") or 3)
@@ -105,6 +105,14 @@ def issue(cmd, *args):
 # ----------------------------------------------------------------------------
 # Issue parsing
 # ----------------------------------------------------------------------------
+
+BODY = ""
+
+
+def fetch_body():
+    global BODY
+    BODY = json.loads(gh(["api", f"repos/{JOIN_REPO}/issues/{ISSUE}"], ISSUE_TOKEN)).get("body") or ""
+
 
 def section(label):
     m = re.search(rf"^###\s*{re.escape(label)}\s*$(.*?)(?=^###\s|\Z)", BODY, re.M | re.S)
@@ -198,6 +206,7 @@ def join():
 
 
 def main():
+    fetch_body()
     try:
         redact_code()
     except GhError as e:

@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Create group repository
         run: python3 .github/scripts/join.py
@@ -24,7 +24,6 @@ jobs:
           JOIN_REPO: ${{ github.repository }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
-          ISSUE_BODY: ${{ github.event.issue.body }}
           TEMPLATE: csr-challenge
           TOPIC: csr-group
           MAX_MEMBERS: "3"
