@@ -3,9 +3,11 @@
 Join flow: "Join" issue -> private group repository created from the template.
 
   1. redact the course code from the issue, validate deadline and code
+     (skipped when an instructor reopens the issue to retry it)
   2. validate teammates: existing GitHub users, group size
   3. reject members already in a group, enforce the group cap
-  4. create ORG/csr-<opener> from the template, tag it, record the members in its description
+  4. create ORG/csr-<opener> from the template (or resume a half-done one with the same members),
+     tag it, record the members in its description
   5. invite every member as collaborator (push), reply on the issue, close and lock it
 
 All input from the issue is untrusted: the body is fetched through the API (never through
@@ -37,6 +39,8 @@ MAX_GROUPS = int(ENV.get("MAX_GROUPS") or 0)  # 0 = no cap
 DEADLINE = ENV.get("JOIN_DEADLINE", "").strip()
 CODE = ENV.get("JOIN_CODE", "").strip()
 ADMIN_TOKEN = ENV.get("ADMIN_TOKEN", "")
+# an instructor reopening the issue retries it: the code is already redacted, skip code and deadline
+RETRY = ENV.get("EVENT_ACTION") == "reopened" and ENV.get("SENDER", "").lower() != AUTHOR.lower()
 ISSUE_TOKEN = ENV.get("ISSUE_TOKEN", "")
 
 LOGIN_RE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}")
@@ -83,6 +87,16 @@ def user(login):
     except GhError:
         return None
     return u["login"] if u.get("type") == "User" else None
+
+
+def repo_members(name):
+    """Members recorded in ORG/name's description, None if the repository does not exist."""
+    try:
+        r = json.loads(api(f"repos/{ORG}/{name}"))
+    except GhError:
+        return None
+    m = MEMBERS_RE.search(r.get("description") or "")
+    return m.group(1).lower().split() if m else []
 
 
 def existing_groups():
@@ -146,9 +160,9 @@ def teammates():
 
 def join():
     # deadline, code
-    if DEADLINE and datetime.now(timezone.utc) > datetime.fromisoformat(DEADLINE.replace("Z", "+00:00")):
+    if not RETRY and DEADLINE and datetime.now(timezone.utc) > datetime.fromisoformat(DEADLINE.replace("Z", "+00:00")):
         raise UserError("Registration is closed. Contact the instructors.")
-    if CODE and section("Course code").strip().lower() != CODE.lower():
+    if not RETRY and CODE and section("Course code").strip().lower() != CODE.lower():
         raise UserError("Wrong course code.")
 
     # members: opener first, canonical logins, no duplicates
@@ -162,35 +176,44 @@ def join():
     if len(members) > MAX_MEMBERS:
         raise UserError(f"{len(members)} members (you included), at most {MAX_MEMBERS} allowed.")
 
-    # existing groups, cap
+    # own repository: absent, or half-done by an earlier run with the same members (resume)
     name = f"csr-{AUTHOR.lower()}"
-    groups = existing_groups()
-    if name in groups:
+    own = repo_members(name)
+    if own is not None and own != [m.lower() for m in members]:
         raise UserError(f"You already created a group: https://github.com/{ORG}/{name}")
-    for m in members:
-        for g, ms in groups.items():
-            if m.lower() in ms:
-                raise UserError(f"@{m} is already in group https://github.com/{ORG}/{g}")
-    if MAX_GROUPS and len(groups) >= MAX_GROUPS:
-        raise UserError("The maximum number of groups has been reached. Contact the instructors.")
 
-    # repository
-    print(f"creating {ORG}/{name} for {members}")
-    api(f"repos/{ORG}/{TEMPLATE}/generate", "POST",
-        fields=[("owner", ORG), ("name", name), ("description", "members: " + " ".join(members))],
-        raw_fields=[("private", "true")])
-    for _ in range(30):
-        try:
-            api(f"repos/{ORG}/{name}")
-            break
-        except GhError:
+    if own is None:
+        # other groups, cap
+        groups = existing_groups()
+        for m in members:
+            for g, ms in groups.items():
+                if g != name and m.lower() in ms:
+                    raise UserError(f"@{m} is already in group https://github.com/{ORG}/{g}")
+        if MAX_GROUPS and len(groups) >= MAX_GROUPS:
+            raise UserError("The maximum number of groups has been reached. Contact the instructors.")
+
+        # repository
+        print(f"creating {ORG}/{name} for {members}")
+        api(f"repos/{ORG}/{TEMPLATE}/generate", "POST",
+            fields=[("owner", ORG), ("name", name), ("description", "members: " + " ".join(members))],
+            raw_fields=[("private", "true")])
+        for _ in range(30):
+            if repo_members(name) is not None:
+                break
             time.sleep(2)
+        else:
+            raise GhError(f"{ORG}/{name} not available after creation")
     else:
-        raise GhError(f"{ORG}/{name} not available after creation")
+        print(f"resuming {ORG}/{name} for {members}")
     api(f"repos/{ORG}/{name}/topics", "PUT", fields=[("names[]", TOPIC)])
 
     # invitations
     for m in members:
+        try:
+            api(f"repos/{ORG}/{name}/collaborators/{m}")  # 204: already has access (e.g. an org owner)
+            continue
+        except GhError:
+            pass
         api(f"repos/{ORG}/{name}/collaborators/{m}", "PUT", fields=[("permission", "push")])
 
     url = f"https://github.com/{ORG}/{name}"
@@ -222,8 +245,11 @@ def main():
         issue("close", "--reason", "not planned")
     except Exception as e:  # noqa: BLE001 - anything else is on our side
         print(f"error: {e}", file=sys.stderr)
+        detail = str(e).replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+        print(f"::error title=join failed::{detail}")
         issue("comment", "--body", "⚠️ Something went wrong on our side. "
-                                   "The instructors have been notified; no need to open a new issue.")
+                                   "The instructors have been notified; no need to open a new issue.\n\n"
+                                   "_Instructors: fix the cause, then close and reopen this issue to retry._")
         sys.exit(1)
 
 

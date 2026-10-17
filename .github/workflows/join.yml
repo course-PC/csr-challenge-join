@@ -3,7 +3,7 @@ name: join
 
 on:
   issues:
-    types: [opened]
+    types: [opened, reopened]
 
 permissions:
   issues: write
@@ -24,6 +24,8 @@ jobs:
           JOIN_REPO: ${{ github.repository }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+          EVENT_ACTION: ${{ github.event.action }}
+          SENDER: ${{ github.event.sender.login }}
           TEMPLATE: csr-challenge
           TOPIC: csr-group
           MAX_MEMBERS: "3"
