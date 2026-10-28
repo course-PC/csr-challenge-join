@@ -30,5 +30,5 @@ jobs:
           TOPIC: csr-group
           MAX_MEMBERS: "3"
           MAX_GROUPS: ${{ vars.MAX_GROUPS }}
-          JOIN_DEADLINE: "2026-10-28T23:59:59+01:00"  # extended by 24 h; overrides the JOIN_DEADLINE variable
+          JOIN_DEADLINE: ${{ vars.JOIN_DEADLINE }}
           JOIN_CODE: ${{ secrets.JOIN_CODE }}
